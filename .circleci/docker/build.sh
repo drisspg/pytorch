@@ -145,6 +145,18 @@ case "$image" in
     VISION=yes
     KATEX=yes
     ;;
+  pytorch-linux-bionic-cuda11.3-cudnn8-py3-clang9)
+    CUDA_VERSION=11.3.0 # Deviating from major.minor to conform to nvidia's Docker image names
+    CUDNN_VERSION=8
+    TENSORRT_VERSION=8.0.1.6
+    ANACONDA_PYTHON_VERSION=3.7
+    CMAKE_VERSION=3.10.3
+    CLANG_VERSION=9
+    PROTOBUF=yes
+    DB=yes
+    VISION=yes
+    KATEX=yes
+    ;;
   pytorch-linux-xenial-py3-clang5-asan)
     ANACONDA_PYTHON_VERSION=3.7
     CLANG_VERSION=5.0
