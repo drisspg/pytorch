@@ -12008,3 +12008,93 @@ Example::
     tensor([[2, 3, 5],
             [2, 3, 5]])
 """)
+
+add_docstr(torch.view_as_real_copy,
+           r"""
+Performs the same operation as :func:`torch.view_as_real`, but all output tensors
+are freshly created instead of aliasing the input.
+""")
+
+
+add_docstr(torch.view_as_complex_copy,
+           r"""
+Performs the same operation as :func:`torch.view_as_complex`, but all output tensors
+are freshly created instead of aliasing the input.
+""")
+
+add_docstr(torch.as_strided_copy,
+           r"""
+See :func:`torch.Tensor.as_strided_copy`
+""")
+
+
+add_docstr(torch.diagonal_copy,
+           r"""
+See :func:`torch.Tensor.diagonal_copy`
+""")
+
+
+add_docstr(torch.narrow_copy,
+           r"""
+See :func:`torch.Tensor.narrow_copy`
+""")
+
+
+add_docstr(torch.permute_copy,
+           r"""
+See :func:`torch.Tensor.permute_copy`
+""")
+
+
+add_docstr(torch.select_copy,
+           r"""
+See :func:`torch.Tensor.select_copy`
+""")
+
+
+add_docstr(torch.detach_copy,
+           r"""
+See :func:`torch.Tensor.detach_copy`
+""")
+
+
+add_docstr(torch.slice_copy,
+           r"""
+See :func:`torch.Tensor.slice_copy`
+""")
+
+
+add_docstr(torch.split_copy,
+           r"""
+See :func:`torch.Tensor.split_copy`
+""")
+
+
+add_docstr(torch.squeeze_copy,
+           r"""
+See :func:`torch.Tensor.squeeze_copy`
+""")
+
+
+add_docstr(torch.t_copy,
+           r"""
+See :func:`torch.Tensor.t_copy`
+""")
+
+
+add_docstr(torch.transpose_copy,
+           r"""
+See :func:`torch.Tensor.transpose_copy`
+""")
+
+
+add_docstr(torch.unsqueeze_copy,
+           r"""
+See :func:`torch.Tensor.unsqueeze_copy`
+""")
+
+
+add_docstr(torch.unbind_copy,
+           r"""
+See :func:`torch.Tensor.unbind_copy`
+""")
