@@ -1572,6 +1572,13 @@ static Tensor& std_var_out(
   TORCH_CHECK(at::isFloatingType(self.scalar_type()) || at::isComplexType(self.scalar_type()),
               "std and var only support floating point and complex dtypes");
 
+  if (!correction_opt.has_value()) {
+    TORCH_WARN_ONCE(
+        fname, ": the default for the correction parameter is deprecated. ",
+        "Call with correction=1 to maintain the current default behavior.")
+  }
+
+  const auto correction = correction_opt.value_or(1);
   if (at::isComplexType(self.scalar_type())) {
     // For complex, calculate variance of real and imaginary components
     // seperately then add to get overall variance.
@@ -1583,7 +1590,7 @@ static Tensor& std_var_out(
         real_out,
         real_in,
         dim,
-        correction_opt,
+        correction,
         keepdim,
         /*take_sqrt=*/false);
 
@@ -1594,7 +1601,7 @@ static Tensor& std_var_out(
         imag_out,
         imag_in,
         dim,
-        correction_opt,
+        correction,
         keepdim,
         /*take_sqrt=*/false);
 
@@ -1606,7 +1613,6 @@ static Tensor& std_var_out(
   }
 
   // Computation for floating point
-  const auto correction = correction_opt.value_or(1);
   ScalarType dtype = get_dtype_from_result(result, {});
   auto iter = make_reduction(fname, result, self, dim, keepdim, dtype);
 
@@ -1643,7 +1649,13 @@ static std::tuple<Tensor&, Tensor&> std_var_mean_out(
   TORCH_CHECK(result1.scalar_type() == c10::toRealValueType(result2.scalar_type()),
               fname, " expected result1 to be real and match the precision of result2. Got ",
               result1.scalar_type(), " and ", result2.scalar_type(), ".");
+  if (!correction_opt.has_value()) {
+    TORCH_WARN_ONCE(
+        fname, ": the default for the correction parameter is deprecated. ",
+        "Call with correction=1 to maintain the current default behavior.")
+  }
 
+  const auto correction = correction_opt.value_or(1);
   if (at::isComplexType(self.scalar_type())) {
     // For complex, calculate for real and imaginary components seperately then combine as:
     // variance = var_real + var_imag
@@ -1658,7 +1670,7 @@ static std::tuple<Tensor&, Tensor&> std_var_mean_out(
         real_out_mean,
         real_in,
         dim,
-        correction_opt,
+        correction,
         keepdim,
         /*take_sqrt=*/false);
 
@@ -1671,7 +1683,7 @@ static std::tuple<Tensor&, Tensor&> std_var_mean_out(
         imag_out_mean,
         imag_in,
         dim,
-        correction_opt,
+        correction,
         keepdim,
         /*take_sqrt=*/false);
 
@@ -1684,7 +1696,6 @@ static std::tuple<Tensor&, Tensor&> std_var_mean_out(
   }
 
   // Computation for floating point
-  const auto correction = correction_opt.value_or(1);
   ScalarType dtype = get_dtype_from_result(result1, {});
   auto iter =
       make_reduction(fname, result1, result2, self, dim, keepdim, dtype);
