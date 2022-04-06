@@ -5876,8 +5876,8 @@ def sample_inputs_std_var(op_info, device, dtype, requires_grad, **kwargs):
                         requires_grad=requires_grad)
 
     return [
-        SampleInput(tensor_nd()),
-        SampleInput(tensor_nd(), kwargs=dict(dim=1)),
+        SampleInput(tensor_nd(), kwargs=dict(unbiased=True)),
+        SampleInput(tensor_nd(), kwargs=dict(dim=1, unbiased=True)),
         SampleInput(tensor_nd(), kwargs=dict(dim=1, unbiased=True, keepdim=True)),
         SampleInput(tensor_1d(), kwargs=dict(dim=0, unbiased=True, keepdim=True)),
         SampleInput(tensor_1d(), kwargs=dict(dim=0, unbiased=False, keepdim=False)),
@@ -10627,7 +10627,7 @@ op_db: List[OpInfo] = [
     OpInfo('var_mean',
            dtypes=floating_and_complex_types_and(torch.half, torch.bfloat16),
            dtypesIfCUDA=floating_and_complex_types_and(torch.half, torch.bfloat16),
-           sample_inputs_func=partial(sample_inputs_reduction, supports_multiple_dims=False),
+           sample_inputs_func=sample_inputs_std_var,
            backward_dtypes=floating_types_and(torch.half),
            backward_dtypesIfCPU=floating_types_and(torch.half, torch.bfloat16),
            backward_dtypesIfCUDA=floating_types_and(torch.half),
@@ -10652,7 +10652,7 @@ op_db: List[OpInfo] = [
     OpInfo('std_mean',
            dtypes=floating_and_complex_types_and(torch.half, torch.bfloat16),
            dtypesIfCUDA=floating_and_complex_types_and(torch.half, torch.bfloat16),
-           sample_inputs_func=partial(sample_inputs_reduction, supports_multiple_dims=False),
+           sample_inputs_func=sample_inputs_std_var,
            backward_dtypes=floating_types_and(torch.half),
            backward_dtypesIfCPU=floating_types_and(torch.half, torch.bfloat16),
            backward_dtypesIfCUDA=floating_types_and(torch.half),
