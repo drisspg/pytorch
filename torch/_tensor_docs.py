@@ -3677,12 +3677,7 @@ In-place version of :meth:`~Tensor.squeeze`
 
 add_docstr_all('std',
                r"""
-std(dim, unbiased=True, keepdim=False) -> Tensor
-
-See :func:`torch.std`
-
-.. function:: std(unbiased=True) -> Tensor
-   :noindex:
+std(dim=None, *, correction=1, keepdim=False) -> Tensor
 
 See :func:`torch.std`
 """)
@@ -4362,12 +4357,7 @@ In-place version of :meth:`~Tensor.unsqueeze`
 
 add_docstr_all('var',
                r"""
-var(dim, unbiased=True, keepdim=False) -> Tensor
-
-See :func:`torch.var`
-
-.. function:: var(unbiased=True) -> Tensor
-   :noindex:
+var(dim=None, *, correction=1, keepdim=False) -> Tensor
 
 See :func:`torch.var`
 """)
