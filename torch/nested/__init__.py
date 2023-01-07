@@ -176,10 +176,10 @@ class NestedSize():
             raise TypeError("sizes must be a list of tuples")
 
         if len(sizes) == 0:
-            raise ValueError("Sizes must be non-empty")
+            raise ValueError("sizes must be non-empty")
 
         # Check first element is a tuple
-        if not isinstance(size[0], tuple):
+        if not isinstance(sizes[0], tuple):
             raise ValueError("sizes must be a list of tuples")
 
         tuple_size = len(sizes[0])
@@ -221,5 +221,7 @@ def empty_nested(nested_size: Union[NestedSize, Tensor], dtype=None, device=None
             raise ValueError("nested_size must be a int64 tensor")
     else:
         raise ValueError("nested_size must be a NestedSize object or a 2d cpu int64 tensor")
-    return torch._C._nested.empty_nested(nested_size, dtype=dtype, layout=None, device=device, pin_memory=pin_memory)
-
+    return _nested.empty_nested(nested_size,
+                                dtype=dtype, layout=None,
+                                device=device,
+                                pin_memory=pin_memory)  # type: ignore[attr-defined]
