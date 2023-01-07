@@ -1,6 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/native/nested/NestedTensorFactories.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
+#include <ATen/NestedTensorImpl.h>
 
 namespace at {
 namespace native {
@@ -119,6 +120,32 @@ Tensor& copy_nested_(Tensor& self, const Tensor& src, bool non_blocking) {
       "copy_ only supports tensors that are the same size for Nested implementations");
   nt_self->get_buffer().copy_(nt_src->get_buffer(), non_blocking);
   return self;
+}
+
+Tensor empty_nested(
+    const at::Tensor& nested_tensor_size,
+    c10::optional<ScalarType> dtype,
+    c10::optional<Layout> layout,
+    c10::optional<Device> device,
+    c10::optional<bool> pin_memory) {
+  TORCH_CHECK((!layout.has_value()) || (layout.value() == kStrided),
+      "The only supported layout for NestedTensor's underlying storage is kStrided.")
+  TensorOptions options_ =
+      TensorOptions().dtype(dtype).layout(layout).device(device).pinned_memory(pin_memory);
+
+ auto pinned_memory = options_.pinned_memory_opt().value_or(false);
+ TORCH_CHECK(!pinned_memory || options_.device().is_cpu(), "Only CPU tensors support pinned memory");
+
+  auto memory_format =
+      options_.memory_format_opt().value_or(MemoryFormat::Contiguous);
+  TORCH_CHECK(
+      memory_format == MemoryFormat::Contiguous,
+      "empty_nested only supports memory format contiguous, but got ",
+      memory_format,
+      " instead.");
+  int64_t buffer_size = get_numel_from_nested_size_tensor(nested_tensor_size);
+  Tensor new_buffer = at::empty({buffer_size}, options_);
+  return wrap_buffer(new_buffer, nested_tensor_size);
 }
 
 } // namespace native

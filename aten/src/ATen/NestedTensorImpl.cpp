@@ -250,24 +250,7 @@ int64_t NestedTensorImpl::numel_custom() const {
   if (nested_size_tensor_.dim() == 0) {
     return 0;
   }
-  constexpr auto numel_max = std::min(
-      static_cast<uint64_t>(std::numeric_limits<int64_t>::max()),
-      static_cast<uint64_t>(std::numeric_limits<size_t>::max()));
-
-  const auto nt_dim = nested_size_tensor_.size(1);
-  const int64_t* sizes_ptr = nested_size_tensor_.data_ptr<int64_t>();
-  uint64_t num_elements{0};
-
-  for (const auto i : c10::irange(nested_size_tensor_.size(0))) {
-    uint64_t n = 1;
-    const auto start{sizes_ptr + i * nt_dim};
-    const auto end{start + nt_dim};
-    bool overflows = c10::safe_multiplies_u64(start, end, &n);
-    num_elements += n;
-    overflows |= (num_elements > numel_max);
-    TORCH_CHECK(!overflows, "numel: integer multiplication overflow");
-  }
-  return static_cast<int64_t>(num_elements);
+  return get_numel_from_nested_size_tensor(nested_size_tensor_);
 }
 
 
