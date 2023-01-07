@@ -190,7 +190,7 @@ class NestedSize():
                 raise ValueError("All tuples in sizes must have the same length")
 
 
-def empty_nested(nested_size: Union[NestedSize, Tensor], dtype=None, device=None, pin_memory=False) -> Tensor:
+def empty(nested_size: Union[NestedSize, Tensor], dtype=None, device=None, pin_memory=False) -> Tensor:
     r"""Constructs a contiguous NestedTensor with the shape specified by nested_size.
 
     Args:
@@ -208,12 +208,12 @@ def empty_nested(nested_size: Union[NestedSize, Tensor], dtype=None, device=None
     Example::
 
         >>> nt_size = torch.nested.NestedSize([(2,4), (3,5)])
-        >>> nt = torch.nested.empty_nested(nt_size, device='cuda', dtype=torch.float16)
+        >>> nt = torch.nested.empty(nt_size, device='cuda', dtype=torch.float16)
         """
     if isinstance(nested_size, NestedSize):
         nested_size = nested_size.convert_list_to_nested_size()
     elif isinstance(nested_size, Tensor):
-        if nested_size.device != 'cpu':
+        if nested_size.device != torch.device('cpu'):
             raise ValueError("nested_size must be a cpu tensor")
         if nested_size.dim() != 2:
             raise ValueError("nested_size must be a 2d tensor")
