@@ -1998,7 +1998,7 @@ class TestSDPA(NNTestCase):
     @parametrize("max_seq_len_q", [32, 256])
     @parametrize("max_seq_len_kv", [32, 256])
     @parametrize("head_dim", [8, 64])
-    @parametrize("dropout_p", [0.1])
+    @parametrize("dropout_p", [0.0, 0.1])
     @parametrize("dtype", [torch.float16])
     @parametrize("scale", [None, "l1"])
     def test_flash_attention_vs_math_ref_grads_nestedtensor(self, batch_size: int, max_seq_len_q: int, max_seq_len_kv: int,
@@ -2010,15 +2010,16 @@ class TestSDPA(NNTestCase):
         seq_lens_q = torch.randint(low=1, high=max_seq_len_q, size=(batch_size,))
         # Set one entry to max length
         seq_lens_q[torch.randint(0, batch_size, size=(1,))] = max_seq_len_q
-        # seq_lens_kv = torch.randint(low=1, high=max_seq_len_kv, size=(batch_size,))
+        seq_lens_kv = torch.randint(low=1, high=max_seq_len_kv, size=(batch_size,))
+        seq_lens_kv[torch.randint(0, batch_size, size=(1,))] = max_seq_len_kv
 
         def rand_nt(sequence_list, num_heads, head_dim):
             tensors = [torch.rand((num_heads, seq_len, head_dim)) for seq_len in sequence_list]
             return torch.nested.nested_tensor(tensors, requires_grad=True, device="cuda", dtype=dtype)
 
         query = rand_nt(seq_lens_q, n_heads, head_dim)
-        key = rand_nt(seq_lens_q, n_heads, head_dim)
-        value = rand_nt(seq_lens_q, n_heads, head_dim)
+        key = rand_nt(seq_lens_kv, n_heads, head_dim)
+        value = rand_nt(seq_lens_kv, n_heads, head_dim)
 
         # Run the math kernel on low precision references
         query_ref_lp = query.clone().detach().requires_grad_(True)
@@ -2035,16 +2036,17 @@ class TestSDPA(NNTestCase):
         output_tuple = torch.ops.aten._scaled_dot_product_flash_attention(
             query, key, value, dropout_p=dropout_p, is_causal=False,
             scale=scale, return_debug_mask=True)
-        # out = torch.nn.functional.scaled_dot_product_attention(query, key, value)
         out = output_tuple[0]
         dbug_mask = output_tuple[-1]
-        # Might be off by one
-        query_and_key_padding_mask = torch.arange(max_seq_len_q).unsqueeze(0).expand(batch_size,
-                                                                                     dbug_mask.size(2)) < seq_lens_q.unsqueeze(-1)
-        query_and_key_padding_mask = query_and_key_padding_mask.to("cuda")
+
+        query_padding_mask = torch.arange(max_seq_len_q).unsqueeze(0).expand(batch_size, max_seq_len_q) < seq_lens_q.unsqueeze(-1)
+        query_padding_mask = query_padding_mask.to("cuda")
+
+        key_padding_mask = torch.arange(max_seq_len_kv).unsqueeze(0).expand(batch_size, max_seq_len_kv) < seq_lens_kv.unsqueeze(-1)
+        key_padding_mask = key_padding_mask.to("cuda")
 
         softmax_mask = self.convert_flash_attn_S_to_softmax(
-            dbug_mask, query_and_key_padding_mask, query_and_key_padding_mask, head_dim=head_dim, causal=False)
+            dbug_mask, query_padding_mask, key_padding_mask, head_dim=head_dim, causal=False)
         dropout_mask = softmax_mask >= 0
 
         if not is_dropout:
@@ -2061,8 +2063,8 @@ class TestSDPA(NNTestCase):
                 batch_stack = []
                 for head in range(n_heads):
                     batch_stack.append(dropout_mask[tensor_component, head,
-                                                    0:seq_lens_q[tensor_component], 0:
-                                                    seq_lens_q[tensor_component]].unsqueeze(0))
+                                                    0:seq_lens_q[tensor_component],
+                                                    0:seq_lens_kv[tensor_component]].unsqueeze(0))
                 nt_stack.append(torch.cat(batch_stack))
             nested_dropout_mask = torch.nested.nested_tensor(nt_stack)
             # High Precision Math Reference
