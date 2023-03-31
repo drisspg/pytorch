@@ -466,21 +466,19 @@ sdpa_nested_preprocessing_backward(
     const Tensor& cumulative_sequence_length_kv,
     const int64_t max_seqlen_batch_q,
     const int64_t max_seqlen_batch_kv) {
-//   const int64_t q_batch_size = query.size(0);
-//   const int64_t k_batch_size = key.size(0);
-  // TODO FIX ME!
+  const int64_t q_batch_size = query.size(0);
+  const int64_t k_batch_size = key.size(0);
 
-  // const int64_t v_batch_size = value.size(0);
+  const int64_t v_batch_size = value.size(0);
 
-  // const int64_t q_num_heads = query.size(1);
-  // const int64_t k_num_heads = key.size(1);
-  // const int64_t v_num_heads = value.size(1);
+  const int64_t q_num_heads = query.size(1);
+  const int64_t k_num_heads = key.size(1);
+  const int64_t v_num_heads = value.size(1);
 
-  // if (!(q_batch_size == k_batch_size && q_batch_size == v_batch_size) ||
-  //     !(q_num_heads == k_num_heads && k_num_heads == v_num_heads)) {
-  //       TORCH_CHECK(false, "lets not think about this path right now");
-  //   return sdpa_nested_preprocessing_with_broadcast(query, key, value);
-  // }
+  if (!(q_batch_size == k_batch_size && q_batch_size == v_batch_size) ||
+      !(q_num_heads == k_num_heads && k_num_heads == v_num_heads)) {
+        TORCH_CHECK(false, "Broadcasted NestedTensor inputs is currently not supported for backwards.");
+  }
 
   const int64_t num_heads = query.size(1);
   const int64_t head_dim_qk = query.size(3);

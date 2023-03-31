@@ -115,10 +115,14 @@ inline bool check_tensor_dtype(
   return true;
 }
 
-inline bool check_for_non_zero_dropout(sdp_params params, bool debug) {
-  if (params.dropout != 0.0) {
+
+inline bool check_requires_grad(sdp_params params, bool debug) {
+  const bool any_inputs_require_grad = params.query.requires_grad() ||
+      params.key.requires_grad() || params.value.requires_grad();
+  const bool gradmode_enabled = at::GradMode::is_enabled();
+  if ((any_inputs_require_grad && gradmode_enabled)) {
     if (debug) {
-      TORCH_WARN("Mem_efficient does not support non_zero dropout. Dropout_p: ", params.dropout);
+      TORCH_WARN("Flash Attention does not currently support training.");
     }
     return false;
   }
@@ -130,6 +134,27 @@ inline bool check_for_nested_inputs(sdp_params params){
     return true;
   }
   return false;
+}
+
+inline bool check_requires_grad_and_nested(sdp_params params, bool debug) {
+  // If we fail both checks then we return false
+  if (check_for_nested_inputs(params) && !check_requires_grad(params, false)){
+    if (debug){
+      TORCH_WARN("Memory efficient attention currently doesn't support training with NT inputs.");
+    }
+    return false;
+  }
+  return true;
+}
+
+inline bool check_for_non_zero_dropout(sdp_params params, bool debug) {
+  if (params.dropout != 0.0) {
+    if (debug) {
+      TORCH_WARN("Mem_efficient does not support non_zero dropout. Dropout_p: ", params.dropout);
+    }
+    return false;
+  }
+  return true;
 }
 
 inline bool try_broadcast_param_size(const c10::SymInt q_size,
@@ -230,6 +255,13 @@ inline bool check_for_seq_len_0_nested_tensor(sdp_params params, bool debug) {
   bool same_num_heads = q_num_heads == k_num_heads && q_num_heads == v_num_heads;
 
   if (!same_num_heads) {
+      if (check_requires_grad(params, false)) {
+        if (debug) {
+          TORCH_WARN(
+              "Fused kernels currently do not supported training with broadcasted NestedTensor inputs.");
+        }
+        return false;
+    }
     return try_broadcast_param_size(q_num_heads, k_num_heads, v_num_heads, "num heads ", debug);
   }
 
@@ -258,30 +290,6 @@ inline bool check_for_seq_len_1_nested_tensor(sdp_params params, bool debug) {
     }
   }
 
-  return true;
-}
-
-inline bool check_requires_grad(sdp_params params, bool debug) {
-  const bool any_inputs_require_grad = params.query.requires_grad() ||
-      params.key.requires_grad() || params.value.requires_grad();
-  const bool gradmode_enabled = at::GradMode::is_enabled();
-  if ((any_inputs_require_grad && gradmode_enabled)) {
-    if (debug) {
-      TORCH_WARN("Flash Attention does not currently support training.");
-    }
-    return false;
-  }
-  return true;
-}
-
-inline bool check_requires_grad_and_nested(sdp_params params, bool debug) {
-  // If we fail both checks then we return false
-  if (check_for_nested_inputs(params) && !check_requires_grad(params, false)){
-    if (debug){
-      TORCH_WARN("Memory efficient attention currently doesn't support training with NT inputs.");
-    }
-    return false;
-  }
   return true;
 }
 
@@ -341,6 +349,13 @@ inline bool check_batch_size_and_num_heads(sdp_params params, bool debug) {
   // num_heads logic for nested input is checked in check_for_seq_len_0_nested_tensor
   // as there is handling there to make sure num_heads is not ragged
   if (has_nested_input) {
+    if (check_requires_grad(params, false) && ! same_batch_size) {
+      if (debug) {
+        TORCH_WARN(
+            "Fused kernels currently do not supported training with broadcasted NestedTensor inputs.");
+      }
+      return false;
+    }
     bool broadcastable_batch_size = true;
     if (!same_batch_size) {
       // try to broadcast batchsize

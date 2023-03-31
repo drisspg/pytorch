@@ -187,6 +187,7 @@ class TestTransformers(NNTestCase):
         with torch.no_grad():
             model(src, src_mask=src_mask)
 
+    @slowTest
     @parametrize("device", device_list)
     @parametrize("use_torchscript", [False])
     @parametrize("enable_nested_tensor", [True, False])
@@ -1973,9 +1974,10 @@ class TestSDPA(NNTestCase):
         self.assertEqual(actual.contiguous(), math_ref.contiguous(), atol=1e-3, rtol=1e-2)
 
     @unittest.skipIf(not PLATFORM_SUPPORTS_FUSED_SDPA, "Fused SDPA was not built for this system")
-    def test_fused_kernels_nested_broadcasting_error_cases(self):
+    @parametrize("kernel", [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION])
+    def test_fused_kernels_nested_broadcasting_error_cases(self, kernel):
         # one of k,v needs to be broadcasted and other has non consistent seq_len dim
-        rand_nested_tensor = partial(self.rand_tensor, type="nested", device="cuda", dtype=torch.float32)
+        rand_nested_tensor = partial(self.rand_tensor, type="nested", device="cuda", dtype=torch.float16)
         batch, num_heads, head_dim = 32, 8, 64
         seq_lens_q = torch.randint(low=1, high=32, size=(batch,)).tolist()
         seq_lens_v = torch.randint(low=1, high=32, size=(batch,)).tolist()
@@ -1988,7 +1990,21 @@ class TestSDPA(NNTestCase):
         key = rand_nested_tensor(k_shape).transpose(1, 2)
         value = rand_nested_tensor(v_shape).transpose(1, 2)
 
-        with sdp_kernel(enable_flash=False, enable_math=False, enable_mem_efficient=True):
+        with sdp_kernel(**self.backend_map[kernel]):
+            with self.assertRaisesRegex(RuntimeError, "No available kernel"):
+                torch.nn.functional.scaled_dot_product_attention(
+                    query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False)
+
+        q_shape = (batch, seq_lens_q, num_heads, head_dim)
+        k_shape = (batch, seq_lens_v, 1, head_dim)
+        v_shape = (batch, seq_lens_v, num_heads, head_dim)
+
+        query = rand_nested_tensor(q_shape, requires_grad=True).transpose(1, 2)
+        key = rand_nested_tensor(k_shape, requires_grad=True).transpose(1, 2)
+        value = rand_nested_tensor(v_shape, requires_grad=True).transpose(1, 2)
+
+        #  NestedTensor input requiring grad will fail with broadcasting
+        with sdp_kernel(**self.backend_map[kernel]):
             with self.assertRaisesRegex(RuntimeError, "No available kernel"):
                 torch.nn.functional.scaled_dot_product_attention(
                     query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False)
