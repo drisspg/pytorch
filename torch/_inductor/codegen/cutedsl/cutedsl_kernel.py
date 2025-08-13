@@ -123,6 +123,7 @@ class CuteDSLTemplateKernel(Kernel):
         template_env = {
             "def_kernel": self.def_kernel,
             "gen_defines": lambda: self.gen_defines(**kwargs),
+            "get_output": self.get_output,
         }
 
         # Render the template with the environment and provided kwargs
@@ -201,24 +202,47 @@ class CuteDSLTemplateKernel(Kernel):
 
     def def_kernel(self, *argnames):
         """Define kernel function signature for CuteDSL templates."""
-        # Populate all the kernel args
-        for i, input_node in enumerate(self.input_nodes):
-            self.args.input(input_node.get_name())
+        renames = IndentedBuffer(initial_indent=1)
 
-        if self.output_node:
-            self.args.output(self.output_node.get_name())
+        # Register all input nodes and create arg names
+        for i, input_node in enumerate(self.input_nodes):
+            buf_name = input_node.get_name()
+            self.args.input(buf_name)
+
+            # Create mapping for template names to arg names
+            if i < len(argnames):
+                template_name = argnames[i]
+                arg_name = f"arg_{template_name}"
+                self.args.input_buffers[buf_name] = arg_name
+                # Generate rename: TEMPLATE_NAME = arg_TEMPLATE_NAME
+                renames.writeline(f"{template_name} = {arg_name}")
+
+            # # Register the output if it exists
+            if self.output_node:
+                self.args.output(self.output_node.get_name())
 
         def hook():
+            # python_argdefs() cannot be run until after the rest of the template lazily adds more args
+            arg_defs, *_ = self.args.python_argdefs()
             code = IndentedBuffer()
             code.writeline(f"# Kernel function signature: {self.kernel_name}")
             code.writeline(
-                f"def {self.kernel_name}_{MAIN_SUFFIX}({', '.join(argnames)}):"
+                f"def {self.kernel_name}_{MAIN_SUFFIX}({', '.join(x.full_name() for x in arg_defs)}):"
             )
+            with code.indent():
+                code.splice(renames.getvalue())
             return code.getvalue()
 
         assert "<DEF_KERNEL>" not in self.render_hooks
         self.render_hooks["<DEF_KERNEL>"] = hook
         return "<DEF_KERNEL>"
+
+    def get_output(self):
+        """Get the actual argument name for the output buffer."""
+        if self.output_node:
+            buf_name = self.output_node.get_name()
+            return self.args.output_buffers.get(buf_name, "OUTPUT")
+        return "OUTPUT"
 
     def call_kernel(self, name: str, node=None):
         """Call the kernel function. Simplified version of TritonTemplateKernel.call_kernel."""
