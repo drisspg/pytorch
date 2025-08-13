@@ -3,11 +3,13 @@
 
 from typing import Any
 
+import sympy
 import torch
 from torch.fx import GraphModule
 
-from ...ir import FallbackKernel, ShapeAsConstantBuffer, Subgraph, TensorBox
-from .common import SubgraphResults
+from ...ir import FallbackKernel, FixedLayout, ShapeAsConstantBuffer, Subgraph, TensorBox
+from ...lowering import empty_strided
+from .common import SubgraphResults, load_template, infer_dense_strides
 
 
 aten = torch.ops.aten
@@ -20,6 +22,14 @@ try:
 except ImportError:
     flash_attn_func = None
     CUTE_AVAILABLE = False
+
+
+from ...codegen.cutedsl.cutedsl_template import CuteDSLTemplate
+
+flash_attention_cutedsl_template = CuteDSLTemplate(
+    name="flash_attention_cutedsl",
+    source=load_template("flash_attention")
+)
 
 
 def is_trivial_graph(graph_module: GraphModule, is_score_graph: bool):
@@ -52,52 +62,6 @@ def _use_flex_flash_attention(
 
     return False
 
-
-@torch.library.custom_op("flex_flash_attn::flash_attn_fwd", mutates_args=())
-def flash_attention_forward_kernel(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    scale: float,
-    causal: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Minimal flash attention forward kernel using CUTE implementation."""
-    if not CUTE_AVAILABLE:
-        raise RuntimeError("CUTE flash attention not available")
-    assert flash_attn_func is not None
-
-    q_transposed = query.transpose(1, 2)
-    k_transposed = key.transpose(1, 2)
-    v_transposed = value.transpose(1, 2)
-
-    output, lse = flash_attn_func(
-        q_transposed,
-        k_transposed,
-        v_transposed,
-        softmax_scale=scale,
-        causal=causal,
-    )
-
-    return output.transpose(1, 2), lse
-
-
-@torch.library.register_fake("flex_flash_attn::flash_attn_fwd")  # type: ignore[misc]
-def flex_flash_attn_fwd_fake(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    scale: float,
-    causal: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Fake implementation for the custom op."""
-    batch_size, num_heads, seqlen_q, head_dim = query.shape
-
-    out = query.new_empty(batch_size, seqlen_q, num_heads, head_dim).transpose(1, 2)
-    lse = query.new_empty(batch_size, num_heads, seqlen_q, dtype=torch.float32)
-
-    return out, lse
-
-
 def create_flex_flash_attention_kernel(
     query: TensorBox,
     key: TensorBox,
@@ -110,17 +74,64 @@ def create_flex_flash_attention_kernel(
     score_mod_other_buffers: list[TensorBox],
     mask_mod_other_buffers: list[TensorBox],
 ) -> tuple[TensorBox | ShapeAsConstantBuffer, TensorBox | ShapeAsConstantBuffer]:
-    """Create a flex flash attention kernel."""
+    """Create a flex flash attention kernel using CuteDSL template."""
     if not CUTE_AVAILABLE:
         raise RuntimeError("CUTE flash attention not available")
 
-    outputs = FallbackKernel.create(
-        torch.ops.flex_flash_attn.flash_attn_fwd.default,
-        query,
-        key,
-        value,
-        scale=scale,
-        causal=False,
+    # Get dimensions
+    batch_size, num_heads, seq_len_q, head_dim = query.get_size()
+    v_head_dim = value.get_size()[-1]
+    device = query.get_device()
+    dtype = query.get_dtype()
+    
+    # Ensure device is not None
+    assert device is not None, "Device must be specified"
+
+    # Match stride pattern from query tensor
+    q_strides = query.get_stride()
+    out_size = [batch_size, num_heads, seq_len_q, v_head_dim]
+    out_strides = infer_dense_strides(out_size, q_strides)
+
+    output = empty_strided(
+        size=out_size,
+        stride=out_strides,
+        dtype=dtype,
+        device=device,
     )
-    assert isinstance(outputs, (tuple, list))
-    return TensorBox.create(outputs[0]), TensorBox.create(outputs[1])
+    
+    lse = empty_strided(
+        size=[batch_size, num_heads, seq_len_q],
+        stride=None,  # LSE can be contiguous
+        dtype=torch.float32,  # LSE is always fp32
+        device=device,
+    )
+    
+    # Create layout for primary output
+    output_layout = FixedLayout(
+        device=device,
+        dtype=dtype,
+        size=[batch_size, num_heads, seq_len_q, v_head_dim],
+        stride=[sympy.sympify(s) for s in output.get_stride()],
+    )
+    
+    choices = []
+    causal = kernel_options.get("causal", False)
+    
+    assert flash_attention_cutedsl_template is not None
+    error = flash_attention_cutedsl_template.maybe_append_choice(
+        choices,
+        input_nodes=[query, key, value, lse],
+        layout=output_layout,
+        mutated_inputs=[lse],
+        SM_SCALE=scale,
+        CAUSAL=causal,
+    )
+    
+    if error or not choices:
+        # Fallback to original implementation
+        raise RuntimeError(f"CuteDSL template failed: {error}")
+
+    # No autotune for now
+    template_output = choices[0].output_node()
+    
+    return (template_output, lse)

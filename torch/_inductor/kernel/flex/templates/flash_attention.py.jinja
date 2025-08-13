@@ -1,0 +1,25 @@
+{{def_kernel("Q", "K", "V", "LOGSUMEXP")}}
+    # Flash attention kernel for trivial score mod graphs
+    from flash_attn.cute.interface import _flash_attn_fwd
+
+    # Transpose tensors for _flash_attn_fwd compatibility (B,H,M,D) -> (B,M,H,D)
+    q_transposed = Q.transpose(1, 2)
+    k_transposed = K.transpose(1, 2)
+    v_transposed = V.transpose(1, 2)
+
+    # Call CUTE flash attention directly
+    output, lse_out = _flash_attn_fwd(
+        q_transposed,
+        k_transposed,
+        v_transposed,
+        softmax_scale={{SM_SCALE}},
+        causal={{CAUSAL}},
+        return_lse=True
+    )
+
+    # Transpose output back (B,M,H,D) -> (B,H,M,D)
+    output_final = output.transpose(1, 2)
+
+    # Copy results to output tensors
+    {{get_output()}}[:] = output_final
+    LOGSUMEXP[:] = lse_out
