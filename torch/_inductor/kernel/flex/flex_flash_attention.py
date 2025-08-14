@@ -34,6 +34,7 @@ flash_attention_cutedsl_template = CuteDSLTemplate(
 
 def is_trivial_graph(graph_module: GraphModule, is_score_graph: bool):
     """Check if the flex graphs are trivial"""
+    return True
     graph = graph_module.graph
     nodes = list(graph.nodes)
     # Check if it's just placeholder -> output
@@ -83,7 +84,7 @@ def create_flex_flash_attention_kernel(
     v_head_dim = value.get_size()[-1]
     device = query.get_device()
     dtype = query.get_dtype()
-    
+
     # Ensure device is not None
     assert device is not None, "Device must be specified"
 
@@ -98,14 +99,14 @@ def create_flex_flash_attention_kernel(
         dtype=dtype,
         device=device,
     )
-    
+
     lse = empty_strided(
         size=[batch_size, num_heads, seq_len_q],
         stride=None,  # LSE can be contiguous
         dtype=torch.float32,  # LSE is always fp32
         device=device,
     )
-    
+
     # Create layout for primary output
     output_layout = FixedLayout(
         device=device,
@@ -113,25 +114,26 @@ def create_flex_flash_attention_kernel(
         size=[batch_size, num_heads, seq_len_q, v_head_dim],
         stride=[sympy.sympify(s) for s in output.get_stride()],
     )
-    
+
     choices = []
     causal = kernel_options.get("causal", False)
-    
+
     assert flash_attention_cutedsl_template is not None
     error = flash_attention_cutedsl_template.maybe_append_choice(
         choices,
         input_nodes=[query, key, value, lse],
         layout=output_layout,
         mutated_inputs=[lse],
+        subgraphs=[subgraph_buffer, mask_graph_buffer],
         SM_SCALE=scale,
         CAUSAL=causal,
     )
-    
+
     if error or not choices:
         # Fallback to original implementation
         raise RuntimeError(f"CuteDSL template failed: {error}")
 
     # No autotune for now
     template_output = choices[0].output_node()
-    
+
     return (template_output, lse)

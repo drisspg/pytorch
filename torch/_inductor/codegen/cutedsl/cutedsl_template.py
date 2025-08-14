@@ -118,6 +118,7 @@ class CuteDSLTemplate(KernelTemplate):
         input_nodes = kwargs.pop("input_nodes")
         layout = kwargs.pop("layout")
         mutated_inputs = kwargs.pop("mutated_inputs", None)
+        subgraphs = kwargs.pop("subgraphs", None)
 
         kernel_name = f"cutedsl_{self.name}_{next(self.index_counter)}"
 
@@ -131,6 +132,7 @@ class CuteDSLTemplate(KernelTemplate):
                 kernel_name=kernel_name,
                 input_nodes=input_nodes,
                 output_node=self.output_node,
+                subgraphs=subgraphs,
             )
             code = kernel.render(self.template, **kwargs)
 
@@ -149,6 +151,7 @@ class CuteDSLTemplate(KernelTemplate):
                     kernel_name=str(Placeholder.KERNEL_NAME),
                     input_nodes=input_nodes,
                     output_node=out_node,
+                    subgraphs=subgraphs,
                 )
 
                 def render():
