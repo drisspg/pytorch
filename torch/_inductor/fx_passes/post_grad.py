@@ -109,6 +109,14 @@ def _remove_profiler_ops(graph: torch.fx.Graph) -> None:
         graph.erase_node(node)
 
 
+def _post_grad_cse(gm: torch.fx.GraphModule):
+    from torch._functorch.compile_utils import fx_graph_cse
+
+    cse_graph = fx_graph_cse(gm.graph)
+    gm.graph = cse_graph
+    gm.recompile()
+
+
 def post_grad_passes(gm: torch.fx.GraphModule, is_inference: bool):
     """
     Passes that run on after grad.  This is called once on the forwards
@@ -127,6 +135,11 @@ def post_grad_passes(gm: torch.fx.GraphModule, is_inference: bool):
     if config.dce:
         # has some issues with mutation in inference mode
         gm.graph.eliminate_dead_code()
+
+    if config.pattern_matcher:
+        GraphTransformObserver(gm, "post_grad_cse").apply_gm_pass(
+            _post_grad_cse
+        )
 
     if is_inference and config.reorder_for_locality:
         GraphTransformObserver(gm, "reorder_for_locality").apply_graph_pass(

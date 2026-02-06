@@ -403,6 +403,39 @@ class ReduceTestCase(TestCase):
         check(f, t, 1)
 
 
+    def test_split_with_sizes_dedup(self):
+        def f(qkv):
+            split1 = torch.ops.aten.split_with_sizes.default(
+                qkv, [512, 128, 128], dim=-1
+            )
+            split2 = torch.ops.aten.split_with_sizes.default(
+                qkv, [512, 128, 128], dim=-1
+            )
+            split3 = torch.ops.aten.split_with_sizes.default(
+                qkv, [512, 128, 128], dim=-1
+            )
+            q = split1[0]
+            k = split2[1]
+            v = split3[2]
+            return q + k + v
+
+        t = torch.randn(4, 768)
+        fx_g = make_fx(f)(t)
+        new_graph = fx_graph_cse(fx_g.graph)
+        new_g = fx.GraphModule(fx_g, new_graph)
+
+        split_nodes = [
+            n
+            for n in new_graph.nodes
+            if n.target == torch.ops.aten.split_with_sizes.default
+        ]
+        self.assertEqual(len(split_nodes), 1)
+
+        expected = fx_g(t)
+        actual = new_g(t)
+        self.assertEqual(expected, actual)
+
+
 class RandomOpTestCase(TestCase):
     def test_random(self):
         def f(x):
